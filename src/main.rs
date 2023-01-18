@@ -1,10 +1,23 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+use critical_section::Mutex;
 use esp32c3_hal::{
-    clock::ClockControl, pac::Peripherals, prelude::*, timer::TimerGroup, Rtc, IO,
+    clock::ClockControl,
+    gpio::Gpio9,
+    gpio::{Event, Input, Pin, PullUp},
+    interrupt,
+    pac::{self, Peripherals},
+    prelude::*,
+    timer::TimerGroup,
+    Rtc, IO,
 };
+use core::sync::atomic::{AtomicUsize, Ordering};
 use esp_backtrace as _;
+
+static BUTTON: Mutex<RefCell<Option<Gpio9<Input<PullUp>>>>> = Mutex::new(RefCell::new(None));
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[riscv_rt::entry]
 fn main() -> ! {
@@ -24,16 +37,29 @@ fn main() -> ! {
     wdt0.disable();
     wdt1.disable();
 
-    // Set GPIO7 as an output, GPIO9 as input
+
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
-    let mut led = io.pins.gpio7.into_push_pull_output();
-    let button = io.pins.gpio9.into_pull_up_input();
+    let mut button = io.pins.gpio9.into_pull_up_input();
+    button.listen(Event::FallingEdge);
+
+    critical_section::with(|cs| BUTTON.borrow_ref_mut(cs).replace(button));
+
+    interrupt::enable(pac::Interrupt::GPIO, interrupt::Priority::Priority3).unwrap();
 
     loop {
-        if button.is_high().unwrap() {
-            led.set_high().unwrap();
-        } else {
-            led.set_low().unwrap();
-        }
+        COUNTER.fetch_add(1, Ordering::SeqCst);
     }
+}
+
+#[interrupt]
+fn GPIO() {
+    critical_section::with(|cs| {
+        esp_println::println!("GPIO interrupt, counter = {:}", COUNTER.load(Ordering::SeqCst));
+        COUNTER.store(0, Ordering::SeqCst);
+        BUTTON
+            .borrow_ref_mut(cs)
+            .as_mut()
+            .unwrap()
+            .clear_interrupt();
+    });
 }

@@ -359,6 +359,7 @@ dependencies = [
 name = "rust_fmi_embedded_app"
 version = "0.1.0"
 dependencies = [
+ "critical-section",
  "esp-backtrace",
  "esp-println",
  "esp32c3-hal",
