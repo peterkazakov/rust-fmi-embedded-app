@@ -2,7 +2,7 @@
 #![no_main]
 
 use esp32c3_hal::{
-    clock::ClockControl, pac::Peripherals, prelude::*, timer::TimerGroup, Delay, Rtc, IO,
+    clock::ClockControl, pac::Peripherals, prelude::*, timer::TimerGroup, Rtc, IO,
 };
 use esp_backtrace as _;
 
@@ -24,15 +24,16 @@ fn main() -> ! {
     wdt0.disable();
     wdt1.disable();
 
+    // Set GPIO7 as an output, GPIO9 as input
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
     let mut led = io.pins.gpio7.into_push_pull_output();
-
-    led.set_high().unwrap();
-    let mut delay = Delay::new(&clocks);
+    let button = io.pins.gpio9.into_pull_up_input();
 
     loop {
-        led.toggle().unwrap();
-        delay.delay_ms(500u32);
+        if button.is_high().unwrap() {
+            led.set_high().unwrap();
+        } else {
+            led.set_low().unwrap();
+        }
     }
-
 }
